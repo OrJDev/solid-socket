@@ -4,6 +4,7 @@ import { server } from "./plugin/server";
 import { fileURLToPath } from "url";
 import { importsPlugin } from "./imports";
 import { Plugin } from "vite";
+import { client } from "./plugin/client";
 
 export const router = {
   name: "socket-fns",
@@ -11,8 +12,21 @@ export const router = {
   base: "/_ws",
   handler: "./socket/plugin/server-handler.ts",
   target: "server",
-  plugins: () => socketPlugins(),
+  plugins: () => socketPlugins(true),
 };
+
+export const socketPlugins = (isServer?: boolean) => [
+  importsPlugin({ log: false }),
+  ...server({
+    runtime: normalize(
+      fileURLToPath(
+        new URL("./socket/plugin/server-runtime.js", import.meta.url)
+      )
+    ),
+  }),
+  ...(isServer ? [] : client()),
+  // printPlugin(),
+];
 
 const printPlugin: () => Plugin = () => {
   return {
@@ -30,15 +44,3 @@ const printPlugin: () => Plugin = () => {
     },
   };
 };
-
-export const socketPlugins = () => [
-  importsPlugin({ log: false }),
-  server({
-    runtime: normalize(
-      fileURLToPath(
-        new URL("./socket/plugin/server-runtime.js", import.meta.url)
-      )
-    ),
-  }),
-  // printPlugin(),
-];

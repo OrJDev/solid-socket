@@ -4,5 +4,5 @@ import { client, router, socketPlugins } from "./socket";
 export default defineConfig({
   ssr: false,
   server: { experimental: { websocket: true } },
-  vite: { plugins: [client(), ...socketPlugins()] },
+  vite: { plugins: socketPlugins() },
 }).addRouter(router);
