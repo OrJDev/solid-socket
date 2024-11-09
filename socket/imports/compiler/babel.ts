@@ -1,6 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import * as babel from "@babel/core";
 import { ImportPluginOptions } from ".";
+import {
+  capitalize,
+  importIfNotThere,
+  pushStmts,
+  writeTempFile,
+} from "../utils";
 
 const specificImports = [
   "createMemo",
@@ -13,7 +19,15 @@ const specificImports = [
   "onCleanup",
 ];
 
-export function createTransform$(opts?: ImportPluginOptions) {
+const serverSolidLoc = "solid-js/dist/solid";
+
+const packageLoc = "socket/lib";
+
+export function createTransform$(
+  count: number,
+  root: string,
+  opts?: ImportPluginOptions
+) {
   return function transform$({
     types: t,
     template: temp,
@@ -23,6 +37,46 @@ export function createTransform$(opts?: ImportPluginOptions) {
   }): babel.PluginObj {
     return {
       visitor: {
+        async CallExpression(path) {
+          if (opts?.importsOnly) return;
+          const { callee } = path.node;
+          if (t.isIdentifier(callee, { name: "createServerSignal" })) {
+            const passedName = (path.node.arguments?.[0] as any).value;
+            const defaultValue = path.node.arguments?.[1];
+
+            const name = `serverSignal$${count}`;
+
+            importIfNotThere(
+              path,
+              t,
+              `use${capitalize(name)}`,
+              `virtual:${name}`
+            );
+            path.replaceWith(
+              t.callExpression(t.identifier(`use${capitalize(name)}`), [])
+            );
+
+            await writeTempFile(
+              `'use socket';
+import { createSignal } from "${serverSolidLoc}";
+import { createSocketMemo } from "../../../socket/lib/shared";
+
+export const use${capitalize(name)} = () => {
+const [${name}, set${name}] = createSignal(${
+                defaultValue && "value" in defaultValue
+                  ? defaultValue.value
+                  : ""
+              });
+ return {
+ ${passedName}: createSocketMemo(${name}),
+ set${capitalize(passedName)}: set${name},
+ };
+}`,
+              root,
+              name
+            );
+          }
+        },
         ImportDeclaration(path) {
           if (path.node.source.value === "solid-js") {
             const specificSpecifiers = path.node.specifiers.filter(
@@ -38,7 +92,7 @@ export function createTransform$(opts?: ImportPluginOptions) {
             if (specificSpecifiers.length > 0) {
               const newImportDeclaration = t.importDeclaration(
                 specificSpecifiers,
-                t.stringLiteral("solid-js/dist/solid")
+                t.stringLiteral(serverSolidLoc)
               );
               path.insertAfter(newImportDeclaration);
               if (otherSpecifiers.length > 0) {
@@ -57,11 +111,13 @@ export function createTransform$(opts?: ImportPluginOptions) {
 export async function compilepImports(
   code: string,
   id: string,
+  count: number,
+  root: string,
   opts?: ImportPluginOptions
 ) {
   try {
     const plugins: babel.ParserOptions["plugins"] = ["typescript", "jsx"];
-    const transform$ = createTransform$(opts);
+    const transform$ = createTransform$(count, root, opts);
     const transformed = await babel.transformAsync(code, {
       presets: [["@babel/preset-typescript"], ...(opts?.babel?.presets ?? [])],
       parserOpts: {

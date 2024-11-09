@@ -9,6 +9,7 @@ export type ImportPluginOptions = {
     include?: FilterPattern;
     exclude?: FilterPattern;
   };
+  importsOnly?: boolean;
   log?: boolean;
 };
 
